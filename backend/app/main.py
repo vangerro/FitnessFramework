@@ -6,8 +6,8 @@ app = FastAPI(title="FitnessFramework API")
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(weight.router, prefix="/weight", tags=["weight"])
-app.include_router(body_measurement.router, prefix="/measurements", tags=["measurements"])
-app.include_router(workout.router, prefix="/workouts", tags=["workouts"])
+app.include_router(body_measurement.router, prefix="/measurement", tags=["measurement"])
+app.include_router(workout.router, prefix="/workout", tags=["workout"])
 
 @app.get("/health")
 def health():
