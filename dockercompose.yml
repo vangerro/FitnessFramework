@@ -6,9 +6,9 @@ services:
     container_name: fitnessframework_db
     restart: always
     environment:
-      POSTGRES_USER: fitness
-      POSTGRES_PASSWORD: fitness
-      POSTGRES_DB: fitness
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
