@@ -36,9 +36,6 @@ export default function Navbar() {
               <Link href="/dashboard" className="text-sm text-zinc-300 hover:text-white">
                 Dashboard
               </Link>
-              <Link href="/workouts" className="text-sm text-zinc-300 hover:text-white">
-                Workouts
-              </Link>
               <Link href="/weight" className="text-sm text-zinc-300 hover:text-white">
                 Weight
               </Link>
@@ -47,6 +44,9 @@ export default function Navbar() {
                 className="text-sm text-zinc-300 hover:text-white"
               >
                 Measurements
+              </Link>
+              <Link href="/settings" className="text-sm text-zinc-300 hover:text-white">
+                Settings
               </Link>
             </div>
           )}

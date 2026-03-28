@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.schemas.user import UserOut
-from app.services.user_service import get_user_by_id
+from app.schemas.user import UserOut, UserProfileUpdate
+from app.services.user_service import get_user_by_id, update_user_profile
 
 router = APIRouter()
 
@@ -12,6 +12,15 @@ router = APIRouter()
 @router.get("/me", response_model=UserOut)
 def get_me(current_user=Depends(get_current_user)):
     return current_user
+
+
+@router.patch("/me", response_model=UserOut)
+def patch_me(
+    body: UserProfileUpdate,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return update_user_profile(db, current_user, body)
 
 
 @router.get("/{id}", response_model=UserOut)

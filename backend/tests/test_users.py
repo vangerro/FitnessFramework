@@ -52,3 +52,32 @@ def test_get_user_by_id_only_self(client):
     resp = client.get(f"/users/{user2['id']}", headers=auth_headers(token1))
     assert resp.status_code == 404
 
+
+def test_patch_me_profile(client):
+    register_user(client, email="set@example.com", password="123456")
+    token = login_user(client, email="set@example.com", password="123456")
+
+    resp = client.patch(
+        "/users/me",
+        headers=auth_headers(token),
+        json={"height_cm": 178.5, "age": 32},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["height_cm"] == 178.5
+    assert data["age"] == 32
+
+    resp = client.get("/users/me", headers=auth_headers(token))
+    assert resp.status_code == 200
+    assert resp.json()["height_cm"] == 178.5
+    assert resp.json()["age"] == 32
+
+    resp = client.patch(
+        "/users/me",
+        headers=auth_headers(token),
+        json={"age": 33},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["height_cm"] == 178.5
+    assert resp.json()["age"] == 33
+
