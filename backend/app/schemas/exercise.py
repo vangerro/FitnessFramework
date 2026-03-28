@@ -1,18 +1,21 @@
-from datetime import date
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
 
-class WeightCreate(BaseModel):
+class ExerciseCreate(BaseModel):
+    name: str
+    sets: int
+    reps: int
     weight: Decimal
-    date: date
 
 
-class WeightOut(BaseModel):
+class ExerciseOut(BaseModel):
     id: int
+    name: str
+    sets: int
+    reps: int
     weight: Decimal
-    date: date
 
     model_config = ConfigDict(from_attributes=True)
 

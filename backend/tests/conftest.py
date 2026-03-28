@@ -5,7 +5,14 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.db.base import Base
-from app.db.session import get_db
+from app.core.database import get_db
+
+# Ensure all ORM models are imported so Base.metadata includes their tables.
+from app.models.user import User  # noqa: F401
+from app.models.workout import Workout  # noqa: F401
+from app.models.exercise import Exercise  # noqa: F401
+from app.models.weight import Weight  # noqa: F401
+from app.models.body_measurement import BodyMeasurement  # noqa: F401
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
 
