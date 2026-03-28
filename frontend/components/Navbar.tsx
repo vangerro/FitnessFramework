@@ -45,6 +45,9 @@ export default function Navbar() {
               >
                 Measurements
               </Link>
+              <Link href="/workouts" className="text-sm text-zinc-300 hover:text-white">
+                Workouts
+              </Link>
               <Link href="/settings" className="text-sm text-zinc-300 hover:text-white">
                 Settings
               </Link>
