@@ -3,3 +3,8 @@
 .env
 __pycache__
 *.db
+
+# Frontend
+frontend/node_modules
+frontend/.next
+frontend/out

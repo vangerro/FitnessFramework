@@ -1,0 +1,20 @@
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+
+import { getToken } from "../lib/auth";
+
+export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    const token = getToken();
+    if (!token) router.replace("/login");
+  }, [router]);
+
+  const token = typeof window !== "undefined" ? getToken() : null;
+  if (!token) return null;
+  return <>{children}</>;
+}
+
