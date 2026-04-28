@@ -142,7 +142,7 @@ function WorkoutsContent() {
     },
   });
 
-  const isGenerateDisabled = days === "" || Number(days) < 1 || Number(days) > 7 || focus.length === 0;
+  const isGenerateDisabled = days === "" || Number(days) < 1 || Number(days) > 5 || focus.length === 0;
   const totalGeneratedExercises = useMemo(
     () =>
       generatedPlan?.days.reduce(
@@ -182,9 +182,9 @@ function WorkoutsContent() {
             }}
           >
             <NumberField
-              label="Training days (1-7)"
+              label="Training days (1-5)"
               min={1}
-              max={7}
+              max={5}
               step={1}
               value={days}
               onChange={(e) => {

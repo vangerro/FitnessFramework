@@ -94,14 +94,6 @@ EXERCISE_CATALOG: dict[str, list[CatalogExercise]] = {
 }
 
 
-CARDIO_LIBRARY: list[CatalogExercise] = [
-    {"name": "Zone 2 Cardio (30-40 min)", "compound": False, "level": "beginner", "progression_style": "none", "tags": ["cardio_block"], "excluded_presets": []},
-    {"name": "Incline Walk (20-30 min)", "compound": False, "level": "beginner", "progression_style": "none", "tags": ["cardio_block"], "excluded_presets": []},
-    {"name": "Bike Intervals (12-20 min)", "compound": False, "level": "intermediate", "progression_style": "none", "tags": ["cardio_block"], "excluded_presets": []},
-    {"name": "Core Circuit (10-15 min)", "compound": False, "level": "beginner", "progression_style": "none", "tags": ["core"], "excluded_presets": []},
-]
-
-
 BODY_PARTS: tuple[str, ...] = tuple(EXERCISE_CATALOG.keys())
 BALANCED_KEYWORD = "balanced"
 

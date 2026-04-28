@@ -42,7 +42,7 @@ FocusValue = Literal[
 
 
 class PlanGenerateRequest(BaseModel):
-    days: int = Field(ge=1, le=7)
+    days: int = Field(ge=1, le=5)
     focus: list[FocusValue]
     periodization: Periodization
     experience_level: ExperienceLevel

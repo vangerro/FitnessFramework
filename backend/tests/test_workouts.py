@@ -123,3 +123,19 @@ def test_generate_workout_plan_returns_structured_days(client):
     assert all(isinstance(day["exercises"], list) for day in payload["days"])
     assert all(day["exercises"] for day in payload["days"])
 
+
+def test_generate_workout_plan_rejects_more_than_five_days(client):
+    register_user(client, email="generate-limit@example.com", password="123456")
+    token = login_user(client, email="generate-limit@example.com", password="123456")
+
+    response = client.post(
+        "/workouts/generate",
+        headers=auth_headers(token),
+        json={
+            "days": 6,
+            "focus": ["balanced"],
+            "periodization": "hypertrophy",
+            "experience_level": "intermediate",
+        },
+    )
+    assert response.status_code == 422

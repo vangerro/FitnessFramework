@@ -7,7 +7,6 @@ from typing import Literal
 
 from app.data.exercise_catalog import (
     BALANCED_KEYWORD,
-    CARDIO_LIBRARY,
     CatalogExercise,
     ExperienceLevel,
     pool_for_experience,
@@ -51,22 +50,16 @@ def build_generated_plan(
     plan_start = start_date or date.today()
 
     for day_index, template in enumerate(templates, start=1):
-        if template.day_role == "cardio":
-            exercises = _build_cardio_exercises(
-                experience_level=experience_level,
-                rng=rng,
-            )
-        else:
-            exercises = _build_strength_day(
-                template=template,
-                focused_parts=focused_parts,
-                periodization=periodization,
-                experience_level=experience_level,
-                remaining_mandatory=remaining_mandatory,
-                rng=rng,
-            )
-            _enforce_set_budget(exercises, template.max_sets)
-            _sort_day_exercises(exercises)
+        exercises = _build_strength_day(
+            template=template,
+            focused_parts=focused_parts,
+            periodization=periodization,
+            experience_level=experience_level,
+            remaining_mandatory=remaining_mandatory,
+            rng=rng,
+        )
+        _enforce_set_budget(exercises, template.max_sets)
+        _sort_day_exercises(exercises)
 
         for exercise in exercises:
             for tag in exercise.tags:
@@ -110,45 +103,21 @@ def _aesthetic_templates(*, days: int, legs_focus: bool) -> list[DayTemplate]:
             DayTemplate("Upper B", "upper", ["chest", "back", "shoulder", "bis"], 6, 16, 0.75),
         ]
     if days == 4:
-        if legs_focus:
-            return [
-                DayTemplate("Upper A", "upper", ["chest", "back", "shoulder", "bis", "tris"], 6, 16, 0.75),
-                DayTemplate("Lower A + Calves", "lower", ["quads", "hamstrings"], 6, 16, 0.85),
-                DayTemplate("Upper B", "upper", ["chest", "back", "shoulder", "bis", "tris"], 6, 16, 0.75),
-                DayTemplate("Lower B + Calves", "lower", ["quads", "hamstrings"], 6, 16, 0.85),
-            ]
         return [
             DayTemplate("Upper A", "upper", ["chest", "back", "shoulder", "bis", "tris"], 6, 16, 0.75),
-            DayTemplate("Lower + Calves", "lower", ["quads", "hamstrings"], 6, 16, 0.85),
+            DayTemplate("Lower A + Calves", "lower", ["quads", "hamstrings"], 6, 16, 0.85),
             DayTemplate("Upper B", "upper", ["chest", "back", "shoulder", "bis", "tris"], 6, 16, 0.75),
-            DayTemplate("Aesthetic", "aesthetic", ["shoulder", "chest", "back", "bis", "tris"], 6, 15, 0.35),
+            DayTemplate("Lower B + Calves", "lower", ["quads", "hamstrings"], 6, 16, 0.85),
         ]
     if days == 5:
         return [
-            DayTemplate("Upper A", "upper", ["chest", "back", "shoulder", "bis", "tris"], 6, 16, 0.75),
-            DayTemplate("Lower + Calves", "lower", ["quads", "hamstrings"], 6, 16, 0.85),
-            DayTemplate("Upper B", "upper", ["chest", "back", "shoulder", "bis", "tris"], 6, 16, 0.75),
-            DayTemplate("Cardio + Core", "cardio", [], 3, 4, 0.0),
-            DayTemplate("Push/Pull Mix", "upper", ["chest", "back", "shoulder", "bis", "tris"], 5, 14, 0.65),
+            DayTemplate("Upper", "upper", ["chest", "back", "shoulder", "bis", "tris"], 6, 16, 0.75),
+            DayTemplate("Lower", "lower", ["quads", "hamstrings"], 6, 16, 0.85),
+            DayTemplate("Push", "push", ["chest", "shoulder", "tris"], 6, 16, 0.7),
+            DayTemplate("Pull", "pull", ["back", "bis", "shoulder"], 6, 16, 0.7),
+            DayTemplate("Legs", "legs", ["quads", "hamstrings"], 6, 16, 0.85),
         ]
-    if days == 6:
-        return [
-            DayTemplate("Upper A", "upper", ["chest", "back", "shoulder", "bis", "tris"], 6, 16, 0.75),
-            DayTemplate("Lower + Calves", "lower", ["quads", "hamstrings"], 6, 16, 0.85),
-            DayTemplate("Upper B", "upper", ["chest", "back", "shoulder", "bis", "tris"], 6, 16, 0.75),
-            DayTemplate("Cardio + Core", "cardio", [], 3, 4, 0.0),
-            DayTemplate("Pull/Arms", "pull", ["back", "bis", "tris", "shoulder"], 5, 14, 0.6),
-            DayTemplate("Cardio Recovery", "cardio", [], 2, 3, 0.0),
-        ]
-    return [
-        DayTemplate("Upper A", "upper", ["chest", "back", "shoulder", "bis", "tris"], 5, 14, 0.75),
-        DayTemplate("Lower A + Calves", "lower", ["quads", "hamstrings"], 6, 16, 0.85),
-        DayTemplate("Upper B", "upper", ["chest", "back", "shoulder", "bis", "tris"], 5, 14, 0.75),
-        DayTemplate("Cardio + Core", "cardio", [], 3, 4, 0.0),
-        DayTemplate("Pull/Arms", "pull", ["back", "bis", "tris", "shoulder"], 5, 14, 0.6),
-        DayTemplate("Lower B + Calves", "lower", ["quads", "hamstrings"], 6, 16, 0.85),
-        DayTemplate("Cardio Recovery", "cardio", [], 2, 3, 0.0),
-    ]
+    raise ValueError("Training days must be between 1 and 5")
 
 
 def _resolve_focus_parts(focus: list[str]) -> set[BodyPart]:
@@ -295,38 +264,6 @@ def _rep_scheme(
     return sets, None, rep_ranges, False
 
 
-def _build_cardio_exercises(
-    *,
-    experience_level: ExperienceLevel,
-    rng: random.Random,
-) -> list[GeneratedExercise]:
-    pool = pool_for_experience(pool_for_aesthetic(CARDIO_LIBRARY), experience_level)
-    rng.shuffle(pool)
-    selected = pool[:3]
-    exercises: list[GeneratedExercise] = []
-    for entry in selected:
-        duration = _duration_from_name(entry["name"])
-        exercises.append(
-            GeneratedExercise(
-                name=entry["name"],
-                sets=1,
-                reps=1,
-                rep_ranges=[duration] if duration else ["1 block"],
-                body_part="cardio",
-                level=entry["level"],
-                tags=entry["tags"],
-                is_progression=False,
-            )
-        )
-    return exercises
-
-
-def _duration_from_name(name: str) -> str:
-    if "(" in name and ")" in name:
-        return name.split("(", 1)[1].split(")", 1)[0]
-    return "1 block"
-
-
 def _enforce_set_budget(exercises: list[GeneratedExercise], max_sets: int) -> None:
     total_sets = sum(item.sets for item in exercises)
     while total_sets > max_sets and exercises:
@@ -369,7 +306,7 @@ def _inject_missing_mandatory_tags(
 ) -> None:
     if not missing_tags:
         return
-    candidate_days = [day for day in generated_days if day.day_role != "cardio"]
+    candidate_days = list(generated_days)
     for missing_tag in list(missing_tags):
         replacement = _find_by_tag(
             tag=missing_tag,

@@ -1,7 +1,7 @@
 import random
+import pytest
 
 from app.services.plan_generator import build_generated_plan
-
 
 def test_one_day_plan_has_max_six_exercises():
     plan = build_generated_plan(
@@ -26,30 +26,46 @@ def test_aesthetic_preset_excludes_back_squat_and_conventional_deadlift():
     assert "Conventional Deadlift" not in names
 
 
-def test_aesthetic_cardio_day_counts_for_high_frequency_weeks():
+def test_five_day_plan_has_no_cardio_days():
     plan_five = build_generated_plan(
         days=5,
         focus=["balanced"],
         periodization="hypertrophy",
         experience_level="beginner",
     )
-    plan_six = build_generated_plan(
-        days=6,
-        focus=["balanced"],
-        periodization="hypertrophy",
-        experience_level="beginner",
-    )
-    plan_seven = build_generated_plan(
-        days=7,
-        focus=["balanced"],
-        periodization="hypertrophy",
-        experience_level="beginner",
-    )
+    assert all(day.day_role != "cardio" for day in plan_five.days)
+    assert [day.day_role for day in plan_five.days] == [
+        "upper",
+        "lower",
+        "push",
+        "pull",
+        "legs",
+    ]
 
-    assert sum(1 for day in plan_five.days if day.day_role == "cardio") == 1
-    assert sum(1 for day in plan_six.days if day.day_role == "cardio") == 2
-    assert sum(1 for day in plan_seven.days if day.day_role == "cardio") == 2
-    assert sum(1 for day in plan_seven.days if day.day_role in {"lower", "legs"}) == 2
+
+def test_four_day_plan_uses_two_lower_body_days():
+    plan_four = build_generated_plan(
+        days=4,
+        focus=["balanced"],
+        periodization="hypertrophy",
+        experience_level="beginner",
+    )
+    assert [day.day_role for day in plan_four.days] == [
+        "upper",
+        "lower",
+        "upper",
+        "lower",
+    ]
+
+
+def test_plan_generator_rejects_more_than_five_days():
+    with pytest.raises(ValueError):
+        build_generated_plan(
+            days=6,
+            focus=["balanced"],
+            periodization="hypertrophy",
+            experience_level="beginner",
+        )
 
 
 def test_reverse_pyramid_uses_rep_ranges():
