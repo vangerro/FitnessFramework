@@ -88,4 +88,5 @@ class GeneratedPlan(BaseModel):
 
 
 class SavePlanRequest(BaseModel):
+    name: str = Field(min_length=1)
     days: list[GeneratedWorkoutDay] = Field(default_factory=list)

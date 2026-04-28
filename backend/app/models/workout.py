@@ -7,6 +7,8 @@ class Workout(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    plan_id = Column(Integer, ForeignKey("workout_plans.id"), nullable=True, index=True)
+    day_number = Column(Integer, nullable=True)
     name = Column(String, nullable=False)
     date = Column(Date, nullable=False, index=True)
 
@@ -16,6 +18,13 @@ class Workout(Base):
 
     exercises = relationship(
         "Exercise",
+        back_populates="workout",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    plan = relationship("WorkoutPlan", back_populates="workouts")
+    sessions = relationship(
+        "WorkoutSession",
         back_populates="workout",
         cascade="all, delete-orphan",
         lazy="selectin",

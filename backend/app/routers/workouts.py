@@ -9,14 +9,30 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.schemas.plan import GeneratedPlan, PlanGenerateRequest, SavePlanRequest
 from app.schemas.exercise import ExerciseCreate, ExerciseOut
-from app.schemas.workout import WorkoutCreate, WorkoutDetailOut, WorkoutOut
+from app.schemas.workout import (
+    WorkoutCreate,
+    WorkoutDetailOut,
+    WorkoutOut,
+    WorkoutPlanDetailOut,
+    WorkoutPlanOut,
+    WorkoutPlanRenameRequest,
+    WorkoutSessionCreateRequest,
+    WorkoutSessionOut,
+)
 from app.services.plan_generator import build_generated_plan
 from app.services.workout_service import (
     add_exercise,
+    create_workout_plan,
     create_workout,
+    create_workout_session_with_set_logs,
+    delete_workout_plan,
     delete_workout,
+    get_workout_plan_with_details,
     get_workout_with_exercises,
+    list_recent_sessions_for_plan,
+    list_workout_plans,
     list_workouts,
+    rename_workout_plan,
 )
 
 router = APIRouter()
@@ -51,6 +67,7 @@ def save_generated_plan(
             detail="Plan must include at least one workout day",
         )
 
+    plan = create_workout_plan(db, user_id=current_user.id, name=payload.name)
     created_workout_ids: list[int] = []
     fallback_start_date = payload.days[0].date or date.today()
 
@@ -61,6 +78,8 @@ def save_generated_plan(
             user_id=current_user.id,
             name=day.name,
             date=workout_date,
+            plan_id=plan.id,
+            day_number=day.day_number,
         )
         created_workout_ids.append(workout.id)
 
@@ -79,7 +98,7 @@ def save_generated_plan(
                 weight=Decimal("0"),
             )
 
-    return {"created_workout_ids": created_workout_ids}
+    return {"plan_id": plan.id, "created_workout_ids": created_workout_ids}
 
 
 @router.post("", response_model=WorkoutOut)
@@ -98,6 +117,108 @@ def get_my_workouts(
     db: Session = Depends(get_db),
 ):
     return list_workouts(db, user_id=current_user.id)
+
+
+@router.get("/plans", response_model=list[WorkoutPlanOut])
+def get_my_workout_plans(
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    plans = list_workout_plans(db, user_id=current_user.id)
+    return [
+        WorkoutPlanOut(
+            id=plan.id,
+            name=plan.name,
+            created_at=plan.created_at,
+            updated_at=plan.updated_at,
+            workout_count=len(plan.workouts),
+        )
+        for plan in plans
+    ]
+
+
+@router.get("/plans/{plan_id}", response_model=WorkoutPlanDetailOut)
+def get_workout_plan_detail(
+    plan_id: int,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    plan = get_workout_plan_with_details(db, user_id=current_user.id, plan_id=plan_id)
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workout plan not found")
+
+    workouts = sorted(
+        plan.workouts,
+        key=lambda workout: (workout.day_number or 9_999, workout.date, workout.id),
+    )
+    recent_sessions = list_recent_sessions_for_plan(db, user_id=current_user.id, plan_id=plan.id)
+    return WorkoutPlanDetailOut(
+        id=plan.id,
+        name=plan.name,
+        created_at=plan.created_at,
+        updated_at=plan.updated_at,
+        workouts=workouts,
+        recent_sessions=recent_sessions,
+    )
+
+
+@router.patch("/plans/{plan_id}", response_model=WorkoutPlanOut)
+def rename_my_workout_plan(
+    plan_id: int,
+    payload: WorkoutPlanRenameRequest,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    plan = rename_workout_plan(
+        db, user_id=current_user.id, plan_id=plan_id, name=payload.name
+    )
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workout plan not found")
+    return WorkoutPlanOut(
+        id=plan.id,
+        name=plan.name,
+        created_at=plan.created_at,
+        updated_at=plan.updated_at,
+        workout_count=len(plan.workouts),
+    )
+
+
+@router.delete("/plans/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_my_workout_plan(
+    plan_id: int,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    ok = delete_workout_plan(db, user_id=current_user.id, plan_id=plan_id)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workout plan not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/plans/{plan_id}/workouts/{workout_id}/sessions",
+    response_model=WorkoutSessionOut,
+)
+def log_workout_session(
+    plan_id: int,
+    workout_id: int,
+    payload: WorkoutSessionCreateRequest,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = create_workout_session_with_set_logs(
+        db,
+        user_id=current_user.id,
+        plan_id=plan_id,
+        workout_id=workout_id,
+        set_logs=[entry.model_dump() for entry in payload.set_logs],
+    )
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workout plan or workout not found",
+        )
+    return session
 
 
 @router.get("/{workout_id}", response_model=WorkoutDetailOut)

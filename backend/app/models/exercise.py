@@ -16,4 +16,10 @@ class Exercise(Base):
     weight = Column(Numeric(10, 2), nullable=False)
 
     workout = relationship("Workout", back_populates="exercises")
+    set_logs = relationship(
+        "ExerciseSetLog",
+        back_populates="exercise",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 

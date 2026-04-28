@@ -139,3 +139,191 @@ def test_generate_workout_plan_rejects_more_than_five_days(client):
         },
     )
     assert response.status_code == 422
+
+
+def test_save_plan_and_manage_named_workout_plan(client):
+    register_user(client, email="plan-owner@example.com", password="123456")
+    token = login_user(client, email="plan-owner@example.com", password="123456")
+
+    generated = client.post(
+        "/workouts/generate",
+        headers=auth_headers(token),
+        json={
+            "days": 3,
+            "focus": ["balanced"],
+            "periodization": "hypertrophy",
+            "experience_level": "intermediate",
+        },
+    )
+    assert generated.status_code == 200
+    generated_days = generated.json()["days"]
+
+    save_resp = client.post(
+        "/workouts/save-plan",
+        headers=auth_headers(token),
+        json={"name": "Push Pull Base", "days": generated_days},
+    )
+    assert save_resp.status_code == 200
+    save_payload = save_resp.json()
+    assert "plan_id" in save_payload
+    assert len(save_payload["created_workout_ids"]) == 3
+
+    plans_resp = client.get("/workouts/plans", headers=auth_headers(token))
+    assert plans_resp.status_code == 200
+    plans = plans_resp.json()
+    assert len(plans) == 1
+    assert plans[0]["name"] == "Push Pull Base"
+    assert plans[0]["workout_count"] == 3
+
+    detail_resp = client.get(
+        f"/workouts/plans/{save_payload['plan_id']}",
+        headers=auth_headers(token),
+    )
+    assert detail_resp.status_code == 200
+    detail = detail_resp.json()
+    assert detail["name"] == "Push Pull Base"
+    assert len(detail["workouts"]) == 3
+    assert all("exercises" in workout for workout in detail["workouts"])
+
+    rename_resp = client.patch(
+        f"/workouts/plans/{save_payload['plan_id']}",
+        headers=auth_headers(token),
+        json={"name": "Updated Plan Name"},
+    )
+    assert rename_resp.status_code == 200
+    assert rename_resp.json()["name"] == "Updated Plan Name"
+
+    delete_resp = client.delete(
+        f"/workouts/plans/{save_payload['plan_id']}",
+        headers=auth_headers(token),
+    )
+    assert delete_resp.status_code == 204
+
+    after_delete_resp = client.get(
+        f"/workouts/plans/{save_payload['plan_id']}",
+        headers=auth_headers(token),
+    )
+    assert after_delete_resp.status_code == 404
+
+
+def test_log_workout_session_with_set_logs(client):
+    register_user(client, email="session-owner@example.com", password="123456")
+    token = login_user(client, email="session-owner@example.com", password="123456")
+
+    generated = client.post(
+        "/workouts/generate",
+        headers=auth_headers(token),
+        json={
+            "days": 2,
+            "focus": ["balanced"],
+            "periodization": "hypertrophy",
+            "experience_level": "intermediate",
+        },
+    )
+    assert generated.status_code == 200
+    generated_days = generated.json()["days"]
+
+    save_resp = client.post(
+        "/workouts/save-plan",
+        headers=auth_headers(token),
+        json={"name": "Session Plan", "days": generated_days},
+    )
+    assert save_resp.status_code == 200
+    plan_id = save_resp.json()["plan_id"]
+
+    detail_resp = client.get(f"/workouts/plans/{plan_id}", headers=auth_headers(token))
+    assert detail_resp.status_code == 200
+    detail = detail_resp.json()
+    workout = detail["workouts"][0]
+    exercise = workout["exercises"][0]
+
+    set_logs = []
+    for set_number in range(1, exercise["sets"] + 1):
+        set_logs.append(
+            {
+                "exercise_id": exercise["id"],
+                "set_number": set_number,
+                "reps": exercise["reps"],
+                "weight": "40",
+            }
+        )
+
+    session_resp = client.post(
+        f"/workouts/plans/{plan_id}/workouts/{workout['id']}/sessions",
+        headers=auth_headers(token),
+        json={"set_logs": set_logs},
+    )
+    assert session_resp.status_code == 200
+    session = session_resp.json()
+    assert session["workout_id"] == workout["id"]
+    assert len(session["set_logs"]) == exercise["sets"]
+
+    detail_after_resp = client.get(f"/workouts/plans/{plan_id}", headers=auth_headers(token))
+    assert detail_after_resp.status_code == 200
+    detail_after = detail_after_resp.json()
+    assert detail_after["recent_sessions"]
+    assert detail_after["recent_sessions"][0]["workout_id"] == workout["id"]
+
+
+def test_workout_plan_routes_are_user_scoped(client):
+    register_user(client, email="scope-a@example.com", password="123456")
+    register_user(client, email="scope-b@example.com", password="123456")
+    token_a = login_user(client, email="scope-a@example.com", password="123456")
+    token_b = login_user(client, email="scope-b@example.com", password="123456")
+
+    generated = client.post(
+        "/workouts/generate",
+        headers=auth_headers(token_a),
+        json={
+            "days": 2,
+            "focus": ["balanced"],
+            "periodization": "hypertrophy",
+            "experience_level": "intermediate",
+        },
+    )
+    assert generated.status_code == 200
+    generated_days = generated.json()["days"]
+
+    save_resp = client.post(
+        "/workouts/save-plan",
+        headers=auth_headers(token_a),
+        json={"name": "Private Plan", "days": generated_days},
+    )
+    assert save_resp.status_code == 200
+    plan_id = save_resp.json()["plan_id"]
+
+    detail_a = client.get(f"/workouts/plans/{plan_id}", headers=auth_headers(token_a))
+    assert detail_a.status_code == 200
+    workout_id = detail_a.json()["workouts"][0]["id"]
+    exercise_id = detail_a.json()["workouts"][0]["exercises"][0]["id"]
+
+    assert client.get(f"/workouts/plans/{plan_id}", headers=auth_headers(token_b)).status_code == 404
+    assert (
+        client.patch(
+            f"/workouts/plans/{plan_id}",
+            headers=auth_headers(token_b),
+            json={"name": "Hacked"},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.delete(f"/workouts/plans/{plan_id}", headers=auth_headers(token_b)).status_code
+        == 404
+    )
+    assert (
+        client.post(
+            f"/workouts/plans/{plan_id}/workouts/{workout_id}/sessions",
+            headers=auth_headers(token_b),
+            json={
+                "set_logs": [
+                    {
+                        "exercise_id": exercise_id,
+                        "set_number": 1,
+                        "reps": 10,
+                        "weight": "20",
+                    }
+                ]
+            },
+        ).status_code
+        == 404
+    )
