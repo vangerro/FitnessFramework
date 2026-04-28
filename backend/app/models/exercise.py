@@ -22,4 +22,10 @@ class Exercise(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+    targets = relationship(
+        "ExerciseSetTarget",
+        back_populates="exercise",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 

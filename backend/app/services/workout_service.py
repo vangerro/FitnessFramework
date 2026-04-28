@@ -1,7 +1,10 @@
+from decimal import Decimal
+
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.exercise import Exercise
 from app.models.exercise_set_log import ExerciseSetLog
+from app.models.exercise_set_target import ExerciseSetTarget
 from app.models.workout import Workout
 from app.models.workout_plan import WorkoutPlan
 from app.models.workout_session import WorkoutSession
@@ -62,7 +65,9 @@ def get_workout_plan_with_details(
     return (
         db.query(WorkoutPlan)
         .options(
-            selectinload(WorkoutPlan.workouts).selectinload(Workout.exercises),
+            selectinload(WorkoutPlan.workouts)
+            .selectinload(Workout.exercises)
+            .selectinload(Exercise.targets),
             selectinload(WorkoutPlan.workouts)
             .selectinload(Workout.sessions)
             .selectinload(WorkoutSession.set_logs),
@@ -162,7 +167,86 @@ def add_exercise(
     db.add(exercise)
     db.commit()
     db.refresh(exercise)
+    ensure_default_targets_for_exercise(db, exercise=exercise)
+    db.refresh(exercise)
     return exercise
+
+
+def ensure_default_targets_for_exercise(db: Session, *, exercise: Exercise) -> None:
+    existing_set_numbers = {
+        target.set_number
+        for target in db.query(ExerciseSetTarget)
+        .filter(ExerciseSetTarget.exercise_id == exercise.id)
+        .all()
+    }
+    to_add = []
+    for set_number in range(1, exercise.sets + 1):
+        if set_number in existing_set_numbers:
+            continue
+        to_add.append(
+            ExerciseSetTarget(
+                exercise_id=exercise.id,
+                set_number=set_number,
+                planned_reps=exercise.reps,
+                planned_weight=exercise.weight,
+            )
+        )
+    if to_add:
+        db.add_all(to_add)
+        db.commit()
+
+
+def replace_exercise_targets(
+    db: Session,
+    *,
+    user_id: int,
+    plan_id: int,
+    exercise_id: int,
+    targets: list[dict],
+) -> list[ExerciseSetTarget] | None:
+    exercise = (
+        db.query(Exercise)
+        .join(Workout, Workout.id == Exercise.workout_id)
+        .filter(
+            Exercise.id == exercise_id,
+            Workout.user_id == user_id,
+            Workout.plan_id == plan_id,
+        )
+        .first()
+    )
+    if not exercise:
+        return None
+    if not targets:
+        return None
+
+    by_set_number: dict[int, dict] = {}
+    for target in targets:
+        by_set_number[target["set_number"]] = target
+    if len(by_set_number) != exercise.sets:
+        return None
+    if set(by_set_number.keys()) != set(range(1, exercise.sets + 1)):
+        return None
+
+    db.query(ExerciseSetTarget).filter(ExerciseSetTarget.exercise_id == exercise_id).delete()
+    db.add_all(
+        [
+            ExerciseSetTarget(
+                exercise_id=exercise_id,
+                set_number=set_number,
+                planned_reps=data["planned_reps"],
+                planned_weight=data["planned_weight"],
+            )
+            for set_number, data in sorted(by_set_number.items())
+        ]
+    )
+    db.commit()
+
+    return (
+        db.query(ExerciseSetTarget)
+        .filter(ExerciseSetTarget.exercise_id == exercise_id)
+        .order_by(ExerciseSetTarget.set_number.asc())
+        .all()
+    )
 
 
 def create_workout_session_with_set_logs(
@@ -213,5 +297,36 @@ def create_workout_session_with_set_logs(
         .options(selectinload(WorkoutSession.set_logs))
         .filter(WorkoutSession.id == session.id)
         .first()
+    )
+
+
+def list_sessions_for_plan_workout(
+    db: Session,
+    *,
+    user_id: int,
+    plan_id: int,
+    workout_id: int,
+) -> list[WorkoutSession] | None:
+    workout = (
+        db.query(Workout)
+        .filter(
+            Workout.id == workout_id,
+            Workout.user_id == user_id,
+            Workout.plan_id == plan_id,
+        )
+        .first()
+    )
+    if not workout:
+        return None
+
+    return (
+        db.query(WorkoutSession)
+        .options(selectinload(WorkoutSession.set_logs))
+        .filter(
+            WorkoutSession.user_id == user_id,
+            WorkoutSession.workout_id == workout_id,
+        )
+        .order_by(WorkoutSession.performed_at.desc(), WorkoutSession.id.desc())
+        .all()
     )
 

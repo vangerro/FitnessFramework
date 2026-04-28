@@ -184,6 +184,8 @@ def test_save_plan_and_manage_named_workout_plan(client):
     assert detail["name"] == "Push Pull Base"
     assert len(detail["workouts"]) == 3
     assert all("exercises" in workout for workout in detail["workouts"])
+    first_exercise = detail["workouts"][0]["exercises"][0]
+    assert len(first_exercise["targets"]) == first_exercise["sets"]
 
     rename_resp = client.patch(
         f"/workouts/plans/{save_payload['plan_id']}",
@@ -258,11 +260,77 @@ def test_log_workout_session_with_set_logs(client):
     assert session["workout_id"] == workout["id"]
     assert len(session["set_logs"]) == exercise["sets"]
 
+    list_sessions_resp = client.get(
+        f"/workouts/plans/{plan_id}/workouts/{workout['id']}/sessions",
+        headers=auth_headers(token),
+    )
+    assert list_sessions_resp.status_code == 200
+    sessions = list_sessions_resp.json()
+    assert len(sessions) == 1
+    assert sessions[0]["id"] == session["id"]
+    assert len(sessions[0]["set_logs"]) == exercise["sets"]
+
     detail_after_resp = client.get(f"/workouts/plans/{plan_id}", headers=auth_headers(token))
     assert detail_after_resp.status_code == 200
     detail_after = detail_after_resp.json()
     assert detail_after["recent_sessions"]
     assert detail_after["recent_sessions"][0]["workout_id"] == workout["id"]
+
+
+def test_update_exercise_targets(client):
+    register_user(client, email="target-owner@example.com", password="123456")
+    token = login_user(client, email="target-owner@example.com", password="123456")
+
+    generated = client.post(
+        "/workouts/generate",
+        headers=auth_headers(token),
+        json={
+            "days": 2,
+            "focus": ["balanced"],
+            "periodization": "hypertrophy",
+            "experience_level": "intermediate",
+        },
+    )
+    assert generated.status_code == 200
+
+    save_resp = client.post(
+        "/workouts/save-plan",
+        headers=auth_headers(token),
+        json={"name": "Targets Plan", "days": generated.json()["days"]},
+    )
+    assert save_resp.status_code == 200
+    plan_id = save_resp.json()["plan_id"]
+
+    detail_resp = client.get(f"/workouts/plans/{plan_id}", headers=auth_headers(token))
+    assert detail_resp.status_code == 200
+    exercise = detail_resp.json()["workouts"][0]["exercises"][0]
+    assert exercise["targets"]
+
+    updated_targets = [
+        {
+            "set_number": target["set_number"],
+            "planned_reps": target["planned_reps"] + 1,
+            "planned_weight": "22.5",
+        }
+        for target in exercise["targets"]
+    ]
+    replace_resp = client.put(
+        f"/workouts/plans/{plan_id}/exercises/{exercise['id']}/targets",
+        headers=auth_headers(token),
+        json={"targets": updated_targets},
+    )
+    assert replace_resp.status_code == 200
+    replace_payload = replace_resp.json()
+    assert replace_payload["exercise_id"] == exercise["id"]
+    assert len(replace_payload["targets"]) == len(updated_targets)
+
+    detail_after_resp = client.get(f"/workouts/plans/{plan_id}", headers=auth_headers(token))
+    assert detail_after_resp.status_code == 200
+    exercise_after = detail_after_resp.json()["workouts"][0]["exercises"][0]
+    assert [item["planned_reps"] for item in exercise_after["targets"]] == [
+        item["planned_reps"] for item in updated_targets
+    ]
+    assert all(str(item["planned_weight"]) in {"22.5", "22.50"} for item in exercise_after["targets"])
 
 
 def test_workout_plan_routes_are_user_scoped(client):
@@ -324,6 +392,21 @@ def test_workout_plan_routes_are_user_scoped(client):
                     }
                 ]
             },
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"/workouts/plans/{plan_id}/workouts/{workout_id}/sessions",
+            headers=auth_headers(token_b),
+        ).status_code
+        == 404
+    )
+    assert (
+        client.put(
+            f"/workouts/plans/{plan_id}/exercises/{exercise_id}/targets",
+            headers=auth_headers(token_b),
+            json={"targets": [{"set_number": 1, "planned_reps": 10, "planned_weight": "30"}]},
         ).status_code
         == 404
     )

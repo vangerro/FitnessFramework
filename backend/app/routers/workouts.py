@@ -10,6 +10,8 @@ from app.core.security import get_current_user
 from app.schemas.plan import GeneratedPlan, PlanGenerateRequest, SavePlanRequest
 from app.schemas.exercise import ExerciseCreate, ExerciseOut
 from app.schemas.workout import (
+    ExerciseSetTargetsReplaceOut,
+    ExerciseSetTargetsReplaceRequest,
     WorkoutCreate,
     WorkoutDetailOut,
     WorkoutOut,
@@ -29,9 +31,11 @@ from app.services.workout_service import (
     delete_workout,
     get_workout_plan_with_details,
     get_workout_with_exercises,
+    list_sessions_for_plan_workout,
     list_recent_sessions_for_plan,
     list_workout_plans,
     list_workouts,
+    replace_exercise_targets,
     rename_workout_plan,
 )
 
@@ -219,6 +223,59 @@ def log_workout_session(
             detail="Workout plan or workout not found",
         )
     return session
+
+
+@router.get(
+    "/plans/{plan_id}/workouts/{workout_id}/sessions",
+    response_model=list[WorkoutSessionOut],
+)
+def list_workout_day_sessions(
+    plan_id: int,
+    workout_id: int,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sessions = list_sessions_for_plan_workout(
+        db,
+        user_id=current_user.id,
+        plan_id=plan_id,
+        workout_id=workout_id,
+    )
+    if sessions is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workout plan or workout not found",
+        )
+    return sessions
+
+
+@router.put(
+    "/plans/{plan_id}/exercises/{exercise_id}/targets",
+    response_model=ExerciseSetTargetsReplaceOut,
+)
+def replace_plan_exercise_targets(
+    plan_id: int,
+    exercise_id: int,
+    payload: ExerciseSetTargetsReplaceRequest,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    targets = replace_exercise_targets(
+        db,
+        user_id=current_user.id,
+        plan_id=plan_id,
+        exercise_id=exercise_id,
+        targets=[target.model_dump() for target in payload.targets],
+    )
+    if targets is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workout plan or exercise not found",
+        )
+    return ExerciseSetTargetsReplaceOut(
+        exercise_id=exercise_id,
+        targets=targets,
+    )
 
 
 @router.get("/{workout_id}", response_model=WorkoutDetailOut)

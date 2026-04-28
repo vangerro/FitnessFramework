@@ -16,6 +16,7 @@ class ExerciseOut(BaseModel):
     sets: int
     reps: int
     weight: Decimal
+    targets: list["ExerciseSetTargetOut"] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -34,6 +35,22 @@ class ExerciseSetLogOut(BaseModel):
     set_number: int
     reps: int
     weight: Decimal
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ExerciseSetTargetUpdate(BaseModel):
+    set_number: int = Field(ge=1)
+    planned_reps: int = Field(ge=1)
+    planned_weight: Decimal = Field(ge=0)
+
+
+class ExerciseSetTargetOut(BaseModel):
+    id: int
+    exercise_id: int
+    set_number: int
+    planned_reps: int
+    planned_weight: Decimal
 
     model_config = ConfigDict(from_attributes=True)
 

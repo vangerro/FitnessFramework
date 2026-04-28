@@ -66,6 +66,12 @@ type WorkoutExercise = {
   sets: number;
   reps: number;
   weight: number;
+  targets: {
+    id: number;
+    set_number: number;
+    planned_reps: number;
+    planned_weight: number;
+  }[];
 };
 
 type WorkoutDetail = WorkoutOut & {
@@ -100,7 +106,6 @@ type WorkoutPlanDetail = {
   id: number;
   name: string;
   workouts: WorkoutDetail[];
-  recent_sessions: WorkoutSession[];
 };
 
 type TabValue = "generator" | "tracking";
@@ -157,9 +162,9 @@ function WorkoutsContent() {
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<number | null>(null);
   const [renamePlanName, setRenamePlanName] = useState("");
-  const [setEntries, setSetEntries] = useState<Record<string, { reps: string; weight: string }>>(
-    {}
-  );
+  const [actualSetEntries, setActualSetEntries] = useState<Record<string, { reps: string; weight: string }>>({});
+  const [plannedSetEntries, setPlannedSetEntries] = useState<Record<string, { reps: string; weight: string }>>({});
+  const [expandedSessionId, setExpandedSessionId] = useState<number | null>(null);
 
   const plansQuery = useQuery({
     queryKey: ["workoutPlans"],
@@ -171,6 +176,15 @@ function WorkoutsContent() {
     enabled: selectedPlanId !== null,
     queryFn: async () =>
       (await api.get(`/workouts/plans/${selectedPlanId}`)).data as WorkoutPlanDetail,
+  });
+
+  const workoutSessionsQuery = useQuery({
+    queryKey: ["workoutSessions", selectedPlanId, selectedWorkoutId],
+    enabled: selectedPlanId !== null && selectedWorkoutId !== null,
+    queryFn: async () =>
+      (
+        await api.get(`/workouts/plans/${selectedPlanId}/workouts/${selectedWorkoutId}/sessions`)
+      ).data as WorkoutSession[],
   });
 
   const generateMutation = useMutation({
@@ -256,7 +270,7 @@ function WorkoutsContent() {
         [];
       for (const exercise of selectedWorkout.exercises) {
         for (let setNumber = 1; setNumber <= exercise.sets; setNumber += 1) {
-          const entry = setEntries[setEntryKey(exercise.id, setNumber)];
+          const entry = actualSetEntries[setEntryKey(exercise.id, setNumber)];
           if (!entry) {
             throw new Error("Please fill all reps and weight fields.");
           }
@@ -279,6 +293,53 @@ function WorkoutsContent() {
           set_logs: logs,
         })
       ).data;
+    },
+    onSuccess: () => {
+      if (selectedPlanId !== null) {
+        queryClient.invalidateQueries({ queryKey: ["workoutPlanDetail", selectedPlanId] });
+        queryClient.invalidateQueries({
+          queryKey: ["workoutSessions", selectedPlanId, selectedWorkoutId],
+        });
+      }
+    },
+  });
+
+  const saveTargetsMutation = useMutation({
+    mutationFn: async (exerciseId: number) => {
+      if (!selectedPlanId || !selectedWorkout) {
+        return null;
+      }
+      const exercise = selectedWorkout.exercises.find((item) => item.id === exerciseId);
+      if (!exercise) {
+        throw new Error("Exercise not found.");
+      }
+      const targets: Array<{ set_number: number; planned_reps: number; planned_weight: number }> = [];
+      for (let setNumber = 1; setNumber <= exercise.sets; setNumber += 1) {
+        const key = setEntryKey(exercise.id, setNumber);
+        const entry = plannedSetEntries[key];
+        if (!entry) {
+          throw new Error("Please fill all planned fields.");
+        }
+        const plannedReps = Number(entry.reps);
+        const plannedWeight = Number(entry.weight);
+        if (
+          !Number.isFinite(plannedReps) ||
+          plannedReps <= 0 ||
+          !Number.isFinite(plannedWeight) ||
+          plannedWeight < 0
+        ) {
+          throw new Error("Planned reps must be > 0 and planned weight must be >= 0.");
+        }
+        targets.push({
+          set_number: setNumber,
+          planned_reps: plannedReps,
+          planned_weight: plannedWeight,
+        });
+      }
+      await api.put(`/workouts/plans/${selectedPlanId}/exercises/${exerciseId}/targets`, {
+        targets,
+      });
+      return exerciseId;
     },
     onSuccess: () => {
       if (selectedPlanId !== null) {
@@ -351,20 +412,35 @@ function WorkoutsContent() {
 
   useEffect(() => {
     if (!selectedWorkout) {
-      setSetEntries({});
+      setPlannedSetEntries({});
+      setActualSetEntries({});
       return;
     }
-    const next: Record<string, { reps: string; weight: string }> = {};
+    const nextPlanned: Record<string, { reps: string; weight: string }> = {};
+    const nextActual: Record<string, { reps: string; weight: string }> = {};
     selectedWorkout.exercises.forEach((exercise) => {
       for (let setNumber = 1; setNumber <= exercise.sets; setNumber += 1) {
-        next[setEntryKey(exercise.id, setNumber)] = {
-          reps: String(exercise.reps),
-          weight: String(exercise.weight),
+        const target = exercise.targets.find((item) => item.set_number === setNumber);
+        const plannedReps = target?.planned_reps ?? exercise.reps;
+        const plannedWeight = target?.planned_weight ?? exercise.weight;
+        const key = setEntryKey(exercise.id, setNumber);
+        nextPlanned[key] = {
+          reps: String(plannedReps),
+          weight: String(plannedWeight),
+        };
+        nextActual[key] = {
+          reps: String(plannedReps),
+          weight: String(plannedWeight),
         };
       }
     });
-    setSetEntries(next);
+    setPlannedSetEntries(nextPlanned);
+    setActualSetEntries(nextActual);
   }, [selectedWorkoutId, selectedWorkout]);
+
+  useEffect(() => {
+    setExpandedSessionId(null);
+  }, [selectedWorkoutId]);
 
   return (
     <div>
@@ -729,49 +805,100 @@ function WorkoutsContent() {
                             >
                               <p className="mb-2 text-sm font-semibold text-zinc-100">{exercise.name}</p>
                               <div className="space-y-2">
+                                <div className="grid grid-cols-5 gap-2 text-xs uppercase tracking-wide text-zinc-500">
+                                  <p>Set</p>
+                                  <p>Target reps</p>
+                                  <p>Target weight</p>
+                                  <p>Performed reps</p>
+                                  <p>Performed weight</p>
+                                </div>
                                 {Array.from({ length: exercise.sets }).map((_, setIndex) => {
                                   const setNumber = setIndex + 1;
                                   const key = setEntryKey(exercise.id, setNumber);
-                                  const entry = setEntries[key] ?? { reps: "", weight: "" };
+                                  const plannedEntry = plannedSetEntries[key] ?? { reps: "", weight: "" };
+                                  const actualEntry = actualSetEntries[key] ?? { reps: "", weight: "" };
                                   return (
-                                    <div key={key} className="grid grid-cols-3 gap-2 text-sm">
+                                    <div key={key} className="grid grid-cols-5 gap-2 text-sm">
                                       <p className="self-center text-zinc-300">Set {setNumber}</p>
                                       <input
                                         type="number"
                                         min={1}
-                                        value={entry.reps}
+                                        value={plannedEntry.reps}
                                         onChange={(e) =>
-                                          setSetEntries((current) => ({
+                                          setPlannedSetEntries((current) => ({
                                             ...current,
                                             [key]: {
-                                              ...entry,
+                                              ...plannedEntry,
                                               reps: e.target.value,
                                             },
                                           }))
                                         }
                                         className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100"
-                                        placeholder="Reps"
+                                        placeholder="Planned reps"
                                       />
                                       <input
                                         type="number"
                                         min={0}
                                         step="0.5"
-                                        value={entry.weight}
+                                        value={plannedEntry.weight}
                                         onChange={(e) =>
-                                          setSetEntries((current) => ({
+                                          setPlannedSetEntries((current) => ({
                                             ...current,
                                             [key]: {
-                                              ...entry,
+                                              ...plannedEntry,
                                               weight: e.target.value,
                                             },
                                           }))
                                         }
                                         className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100"
-                                        placeholder="Weight"
+                                        placeholder="Target weight"
+                                      />
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        value={actualEntry.reps}
+                                        onChange={(e) =>
+                                          setActualSetEntries((current) => ({
+                                            ...current,
+                                            [key]: {
+                                              ...actualEntry,
+                                              reps: e.target.value,
+                                            },
+                                          }))
+                                        }
+                                        className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100"
+                                        placeholder="Actual reps"
+                                      />
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        step="0.5"
+                                        value={actualEntry.weight}
+                                        onChange={(e) =>
+                                          setActualSetEntries((current) => ({
+                                            ...current,
+                                            [key]: {
+                                              ...actualEntry,
+                                              weight: e.target.value,
+                                            },
+                                          }))
+                                        }
+                                        className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100"
+                                        placeholder="Performed weight"
                                       />
                                     </div>
                                   );
                                 })}
+                              </div>
+                              <div className="mt-3">
+                                <FormButton
+                                  type="button"
+                                  className="!w-auto"
+                                  loading={saveTargetsMutation.isPending}
+                                  onClick={() => saveTargetsMutation.mutate(exercise.id)}
+                                >
+                                  Save Planned Targets
+                                </FormButton>
                               </div>
                             </div>
                           ))}
@@ -789,6 +916,11 @@ function WorkoutsContent() {
                               {String((logSessionMutation.error as Error)?.message ?? "Failed to save session")}
                             </p>
                           ) : null}
+                          {saveTargetsMutation.isError ? (
+                            <p className="text-sm text-red-300">
+                              {String((saveTargetsMutation.error as Error)?.message ?? "Failed to save planned targets")}
+                            </p>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
@@ -798,23 +930,71 @@ function WorkoutsContent() {
                 </div>
 
                 <div className="rounded border border-zinc-800 bg-zinc-900 p-4">
-                  <h2 className="mb-4 text-lg font-medium">Recent Sessions</h2>
-                  {planDetailQuery.data?.recent_sessions.length ? (
+                  <h2 className="mb-4 text-lg font-medium">Tracked Workouts</h2>
+                  {workoutSessionsQuery.isLoading ? (
+                    <p className="text-sm text-zinc-300">Loading tracked sessions...</p>
+                  ) : workoutSessionsQuery.data?.length ? (
                     <div className="space-y-2">
-                      {planDetailQuery.data.recent_sessions.map((session) => (
+                      {workoutSessionsQuery.data.map((session) => (
                         <div
                           key={session.id}
                           className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2"
                         >
-                          <p className="text-sm text-zinc-100">
-                            Workout #{session.workout_id} - {new Date(session.performed_at).toLocaleString()}
-                          </p>
-                          <p className="text-xs text-zinc-400">{session.set_logs.length} sets logged</p>
+                          <button
+                            type="button"
+                            className="w-full text-left"
+                            onClick={() =>
+                              setExpandedSessionId((current) =>
+                                current === session.id ? null : session.id
+                              )
+                            }
+                          >
+                            <p className="text-sm text-zinc-100">
+                              {new Date(session.performed_at).toLocaleString()}
+                            </p>
+                            <p className="text-xs text-zinc-400">{session.set_logs.length} sets logged</p>
+                          </button>
+                          {expandedSessionId === session.id ? (
+                            <div className="mt-2 space-y-1 border-t border-zinc-800 pt-2">
+                              {(() => {
+                                const exerciseOrder =
+                                  selectedWorkout?.exercises.reduce<Record<number, number>>(
+                                    (acc, exercise, index) => {
+                                      acc[exercise.id] = index;
+                                      return acc;
+                                    },
+                                    {}
+                                  ) ?? {};
+                                return session.set_logs
+                                  .slice()
+                                  .sort((a, b) => {
+                                    const aOrder = exerciseOrder[a.exercise_id] ?? Number.MAX_SAFE_INTEGER;
+                                    const bOrder = exerciseOrder[b.exercise_id] ?? Number.MAX_SAFE_INTEGER;
+                                    if (aOrder !== bOrder) {
+                                      return aOrder - bOrder;
+                                    }
+                                    return a.set_number - b.set_number;
+                                  })
+                                  .map((setLog) => {
+                                    const exerciseName =
+                                      selectedWorkout?.exercises.find(
+                                        (exercise) => exercise.id === setLog.exercise_id
+                                      )?.name ?? `Exercise #${setLog.exercise_id}`;
+                                    return (
+                                      <p key={setLog.id} className="text-xs text-zinc-300">
+                                        {exerciseName} - Set {setLog.set_number}: {setLog.reps} reps @{" "}
+                                        {setLog.weight}
+                                      </p>
+                                    );
+                                  });
+                              })()}
+                            </div>
+                          ) : null}
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-zinc-300">No sessions logged yet.</p>
+                    <p className="text-sm text-zinc-300">No sessions logged yet for this workout day.</p>
                   )}
                 </div>
               </>

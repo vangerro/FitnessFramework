@@ -14,6 +14,7 @@ from app.models.exercise import Exercise  # noqa: F401
 from app.models.workout_plan import WorkoutPlan  # noqa: F401
 from app.models.workout_session import WorkoutSession  # noqa: F401
 from app.models.exercise_set_log import ExerciseSetLog  # noqa: F401
+from app.models.exercise_set_target import ExerciseSetTarget  # noqa: F401
 from app.models.weight import Weight  # noqa: F401
 from app.models.body_measurement import BodyMeasurement  # noqa: F401
 

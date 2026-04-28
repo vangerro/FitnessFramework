@@ -14,6 +14,7 @@ def _import_models() -> None:
     import app.models.body_measurement  # noqa: F401
     import app.models.exercise  # noqa: F401
     import app.models.exercise_set_log  # noqa: F401
+    import app.models.exercise_set_target  # noqa: F401
     import app.models.user  # noqa: F401
     import app.models.weight  # noqa: F401
     import app.models.workout  # noqa: F401
@@ -45,9 +46,33 @@ def _ensure_workout_tracking_schema() -> None:
             connection.execute(text(statement))
 
 
+def _backfill_exercise_targets() -> None:
+    """Ensure each exercise has per-set targets for planning defaults."""
+    insert_sql = """
+    INSERT INTO exercise_set_targets (exercise_id, set_number, planned_reps, planned_weight)
+    SELECT
+        e.id,
+        nums.set_number,
+        e.reps,
+        e.weight
+    FROM exercises e
+    JOIN (
+        SELECT 1 AS set_number UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL
+        SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL
+        SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL SELECT 12
+    ) nums ON nums.set_number <= e.sets
+    LEFT JOIN exercise_set_targets t
+        ON t.exercise_id = e.id AND t.set_number = nums.set_number
+    WHERE t.id IS NULL
+    """
+    with engine.begin() as connection:
+        connection.execute(text(insert_sql))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _ensure_workout_tracking_schema()
+    _backfill_exercise_targets()
     if os.getenv("AUTO_CREATE_SCHEMA", "").lower() in ("1", "true", "yes"):
         _import_models()
         Base.metadata.create_all(bind=engine)

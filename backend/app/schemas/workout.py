@@ -1,7 +1,13 @@
 from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.exercise import ExerciseOut, ExerciseSetLogCreate, ExerciseSetLogOut
+from app.schemas.exercise import (
+    ExerciseOut,
+    ExerciseSetLogCreate,
+    ExerciseSetLogOut,
+    ExerciseSetTargetOut,
+    ExerciseSetTargetUpdate,
+)
 
 
 class WorkoutCreate(BaseModel):
@@ -57,6 +63,10 @@ class WorkoutSessionCreateRequest(BaseModel):
     set_logs: list[ExerciseSetLogCreate] = Field(default_factory=list)
 
 
+class ExerciseSetTargetsReplaceRequest(BaseModel):
+    targets: list[ExerciseSetTargetUpdate] = Field(default_factory=list)
+
+
 class WorkoutSessionOut(BaseModel):
     id: int
     workout_id: int
@@ -65,4 +75,9 @@ class WorkoutSessionOut(BaseModel):
     set_logs: list[ExerciseSetLogOut] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ExerciseSetTargetsReplaceOut(BaseModel):
+    exercise_id: int
+    targets: list[ExerciseSetTargetOut] = Field(default_factory=list)
 
