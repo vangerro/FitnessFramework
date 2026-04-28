@@ -40,11 +40,12 @@ def build_generated_plan(
     periodization: Periodization,
     experience_level: ExperienceLevel,
     start_date: date | None = None,
+    rng: random.Random | None = None,
 ) -> GeneratedPlan:
     focused_parts = _resolve_focus_parts(focus)
     legs_focus = "quads" in focused_parts or "hamstrings" in focused_parts
     templates = _aesthetic_templates(days=days, legs_focus=legs_focus)
-    rng = random.Random(42)
+    rng = rng or random.Random()
     remaining_mandatory = set(AESTHETIC_MANDATORY_TAGS)
     generated_days: list[GeneratedWorkoutDay] = []
     plan_start = start_date or date.today()

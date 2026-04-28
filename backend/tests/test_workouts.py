@@ -100,3 +100,26 @@ def test_workout_access_other_user_returns_404(client):
     resp = client.get(f"/workouts/{created['id']}", headers=auth_headers(token2))
     assert resp.status_code == 404
 
+
+def test_generate_workout_plan_returns_structured_days(client):
+    register_user(client, email="generate@example.com", password="123456")
+    token = login_user(client, email="generate@example.com", password="123456")
+
+    response = client.post(
+        "/workouts/generate",
+        headers=auth_headers(token),
+        json={
+            "days": 3,
+            "focus": ["balanced"],
+            "periodization": "hypertrophy",
+            "experience_level": "intermediate",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert "days" in payload
+    assert len(payload["days"]) == 3
+    assert all(day["day_number"] >= 1 for day in payload["days"])
+    assert all(isinstance(day["exercises"], list) for day in payload["days"])
+    assert all(day["exercises"] for day in payload["days"])
+

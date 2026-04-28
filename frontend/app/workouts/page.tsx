@@ -356,7 +356,7 @@ function WorkoutsContent() {
                   onClick={() => generateMutation.mutate()}
                   loading={generateMutation.isPending}
                 >
-                  Regenerate
+                  Generate
                 </FormButton>
                 <FormButton
                   type="button"

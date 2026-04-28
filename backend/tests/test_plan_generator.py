@@ -1,3 +1,5 @@
+import random
+
 from app.services.plan_generator import build_generated_plan
 
 
@@ -65,3 +67,31 @@ def test_reverse_pyramid_uses_rep_ranges():
     ]
     assert progression_exercises
     assert all(exercise.rep_ranges for exercise in progression_exercises)
+
+
+def test_seeded_rng_produces_stable_plan():
+    base_kwargs = {
+        "days": 4,
+        "focus": ["balanced"],
+        "periodization": "hypertrophy",
+        "experience_level": "intermediate",
+    }
+    plan_a = build_generated_plan(**base_kwargs, rng=random.Random(99))
+    plan_b = build_generated_plan(**base_kwargs, rng=random.Random(99))
+
+    signature_a = [
+        (
+            day.day_role,
+            tuple(exercise.name for exercise in day.exercises),
+        )
+        for day in plan_a.days
+    ]
+    signature_b = [
+        (
+            day.day_role,
+            tuple(exercise.name for exercise in day.exercises),
+        )
+        for day in plan_b.days
+    ]
+
+    assert signature_a == signature_b
